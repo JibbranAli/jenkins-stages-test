@@ -5,14 +5,13 @@ pipeline {
         IMAGE_NAME = "cicd-website"
         DEV_PORT   = "8081"
         PROD_PORT  = "8082"
-        DEV_TEAM   = "dev-team@company.com"
-        MANAGER    = "manager@company.com"
-        OPS_TEAM   = "ops-team@company.com"
+
+        NOTIFY_EMAIL = "jibbranali1997@gmail.com"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout Source Code') {
             steps {
                 checkout scm
             }
@@ -26,10 +25,27 @@ pipeline {
 
         stage('Deploy to DEV') {
             steps {
-                sh '''
-                docker rm -f dev-site || true
-                docker run -d --name dev-site -p $DEV_PORT:80 $IMAGE_NAME:$BUILD_NUMBER
-                '''
+                script {
+                    try {
+                        sh '''
+                        docker rm -f dev-site || true
+                        docker run -d --name dev-site -p $DEV_PORT:80 $IMAGE_NAME:$BUILD_NUMBER
+                        '''
+                    } catch (err) {
+                        emailext(
+                            subject: "❌ DEV DEPLOYMENT FAILED",
+                            body: """
+                            DEV deployment failed.
+
+                            Job: ${JOB_NAME}
+                            Build: ${BUILD_NUMBER}
+                            Stage: DEV
+                            """,
+                            to: "$NOTIFY_EMAIL"
+                        )
+                        error "DEV deployment failed"
+                    }
+                }
             }
         }
 
@@ -37,14 +53,21 @@ pipeline {
             steps {
                 script {
                     try {
+                        sh 'chmod +x test.sh'
                         sh './test.sh'
                     } catch (err) {
                         emailext(
-                            subject: "❌ Website Test Failed (DEV)",
-                            body: "DEV deployment failed. PROD blocked.",
-                            to: "$DEV_TEAM"
+                            subject: "❌ TEST FAILED",
+                            body: """
+                            Automated tests failed.
+
+                            Job: ${JOB_NAME}
+                            Build: ${BUILD_NUMBER}
+                            Stage: TEST
+                            """,
+                            to: "$NOTIFY_EMAIL"
                         )
-                        error "Stopping pipeline due to test failure"
+                        error "Tests failed"
                     }
                 }
             }
@@ -53,10 +76,17 @@ pipeline {
         stage('Manual Approval for PROD') {
             steps {
                 emailext(
-                    subject: "⏸ Approval Needed: Website PROD Deployment",
-                    body: "Please approve PROD deployment from Jenkins UI.",
-                    to: "$MANAGER"
+                    subject: "⏸ APPROVAL REQUIRED FOR PROD",
+                    body: """
+                    Pipeline is waiting for PROD approval.
+
+                    Job: ${JOB_NAME}
+                    Build: ${BUILD_NUMBER}
+                    Stage: APPROVAL
+                    """,
+                    to: "$NOTIFY_EMAIL"
                 )
+
                 input message: 'Approve PROD website deployment?',
                       ok: 'Approve'
             }
@@ -64,10 +94,27 @@ pipeline {
 
         stage('Deploy to PROD') {
             steps {
-                sh '''
-                docker rm -f prod-site || true
-                docker run -d --name prod-site -p $PROD_PORT:80 $IMAGE_NAME:$BUILD_NUMBER
-                '''
+                script {
+                    try {
+                        sh '''
+                        docker rm -f prod-site || true
+                        docker run -d --name prod-site -p $PROD_PORT:80 $IMAGE_NAME:$BUILD_NUMBER
+                        '''
+                    } catch (err) {
+                        emailext(
+                            subject: "❌ PROD DEPLOYMENT FAILED",
+                            body: """
+                            PROD deployment failed.
+
+                            Job: ${JOB_NAME}
+                            Build: ${BUILD_NUMBER}
+                            Stage: PROD
+                            """,
+                            to: "$NOTIFY_EMAIL"
+                        )
+                        error "PROD deployment failed"
+                    }
+                }
             }
         }
     }
@@ -75,19 +122,30 @@ pipeline {
     post {
         success {
             emailext(
-                subject: "✅ Website Deployed Successfully to PROD",
-                body: "Production website is live on port $PROD_PORT",
-                to: "$OPS_TEAM"
+                subject: "✅ PROD DEPLOYMENT SUCCESSFUL",
+                body: """
+                Website deployed successfully to PROD.
+
+                Job: ${JOB_NAME}
+                Build: ${BUILD_NUMBER}
+                PROD URL: http://localhost:${PROD_PORT}
+                """,
+                to: "$NOTIFY_EMAIL"
             )
         }
 
         failure {
             emailext(
-                subject: "❌ CI/CD Pipeline Failed",
-                body: "Pipeline failed. Check Jenkins logs.",
-                to: "$DEV_TEAM"
+                subject: "❌ PIPELINE FAILED",
+                body: """
+                Jenkins pipeline failed.
+
+                Job: ${JOB_NAME}
+                Build: ${BUILD_NUMBER}
+                Please check Jenkins logs.
+                """,
+                to: "$NOTIFY_EMAIL"
             )
         }
     }
 }
-
