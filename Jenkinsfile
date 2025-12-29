@@ -19,7 +19,9 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${IMAGE_NAME}:${BUILD_NUMBER}")
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+                    """
                 }
             }
         }
@@ -68,21 +70,20 @@ URL: ${BUILD_URL}
                 script {
                     emailext(
                         to: "${MAIL_TO}",
-                        subject: "⏸ Approval Required for PROD | Build #${BUILD_NUMBER}",
+                        subject: "⏸ PROD Approval Required | Build #${BUILD_NUMBER}",
                         body: """
-Approval required to deploy to PROD.
+Approval needed for PROD deployment.
 
 Job: ${JOB_NAME}
 Build: ${BUILD_NUMBER}
-Approve here:
-${BUILD_URL}
+URL: ${BUILD_URL}
 """
                     )
 
                     input(
                         message: "Approve deployment to PROD?",
                         ok: "Approve",
-                        submitter: "manager",        // 🔒 ONLY MANAGER
+                        submitter: "manager",   // 🔐 ONLY MANAGER
                         submitterParameter: "APPROVED_BY"
                     )
                 }
@@ -105,13 +106,12 @@ ${BUILD_URL}
         success {
             emailext(
                 to: "${MAIL_TO}",
-                subject: "✅ PROD DEPLOYMENT SUCCESS | Build #${BUILD_NUMBER}",
+                subject: "✅ PROD DEPLOYED SUCCESSFULLY | Build #${BUILD_NUMBER}",
                 body: """
 Deployment successful.
 
 Job: ${JOB_NAME}
 Build: ${BUILD_NUMBER}
-Environment: PROD
 Approved by: ${APPROVED_BY}
 
 URL: ${BUILD_URL}
@@ -128,15 +128,9 @@ Pipeline failed.
 
 Job: ${JOB_NAME}
 Build: ${BUILD_NUMBER}
-
-Check console logs:
-${BUILD_URL}
+URL: ${BUILD_URL}
 """
             )
-        }
-
-        always {
-            echo "Pipeline execution finished."
         }
     }
 }
